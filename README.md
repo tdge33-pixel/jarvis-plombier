@@ -7,6 +7,11 @@ Assistant IA personnel pour plombiers indépendants et petites entreprises de pl
 
 Architecture conçue pour être réutilisée par d'autres métiers (électricien, chauffagiste, coiffeur, garage…) : voir [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+## Essayer sans rien installer (GitHub Codespaces)
+
+Sur la page GitHub du dépôt : bouton vert **Code** → onglet **Codespaces** → **Create codespace on main**.
+Après 2 à 3 minutes, l'application s'ouvre automatiquement dans un nouvel onglet (sinon : onglet **Ports** → port 3000 → icône globe).
+
 ## Démarrage rapide (mode démo, aucune configuration)
 
 ```bash

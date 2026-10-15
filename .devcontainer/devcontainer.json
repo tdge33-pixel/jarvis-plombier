@@ -1,0 +1,11 @@
+{
+  "name": "Jarvis Plombier (démo)",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install",
+  "postAttachCommand": "npm run dev",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Jarvis Plombier", "onAutoForward": "openBrowser" }
+  },
+  "containerEnv": { "DATA_BACKEND": "demo", "NEXT_TELEMETRY_DISABLED": "1" }
+}
