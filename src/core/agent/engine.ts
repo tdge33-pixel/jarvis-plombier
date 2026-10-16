@@ -118,7 +118,13 @@ export async function runAgentTurn(ctx: AppContext, input: { conversationId?: st
     }
   } catch (err) {
     console.error("[jarvis] erreur pendant le tour", err);
-    finalText = "Désolé, je n'ai pas réussi à traiter votre demande. Réessayez dans un instant.";
+    const status = (err as { status?: number }).status;
+    finalText =
+      status === 401
+        ? "Je n'arrive pas à me connecter au service d'IA : la clé API semble invalide. Vérifiez-la dans la configuration."
+        : status === 402 || status === 429
+          ? "Le service d'IA est momentanément indisponible (crédit épuisé ou trop de demandes). Réessayez dans un instant."
+          : "Désolé, je n'ai pas réussi à traiter votre demande. Réessayez dans un instant.";
   }
 
   if (!finalText && !stop) finalText = "C'est fait.";

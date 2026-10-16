@@ -45,11 +45,10 @@ export class AnthropicProvider implements AIProvider {
   private readonly model = process.env.AI_MODEL || DEFAULT_MODEL;
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
-    const useFallbacks = FALLBACK_MODELS.has(this.model);
-    const response = await this.client.beta.messages.create({
+    const params = {
       model: this.model,
       max_tokens: 16000,
-      system: [{ type: "text", text: req.system }],
+      system: [{ type: "text" as const, text: req.system }],
       messages: toAnthropicMessages(req.messages),
       tools: req.tools.map((t) => ({
         name: t.name,
@@ -57,9 +56,20 @@ export class AnthropicProvider implements AIProvider {
         input_schema: t.parameters as Anthropic.Beta.Messages.BetaTool.InputSchema,
       })),
       // Assistant conversationnel : effort modéré pour des réponses rapides.
-      output_config: { effort: "medium" },
-      ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-    });
+      output_config: { effort: "medium" as const },
+    };
+    let response: Anthropic.Beta.Messages.BetaMessage;
+    if (FALLBACK_MODELS.has(this.model)) {
+      try {
+        response = await this.client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
+      } catch (err) {
+        // Repli serveur indisponible pour ce compte : on relance la requête sans.
+        if (!(err instanceof Anthropic.BadRequestError)) throw err;
+        response = await this.client.beta.messages.create(params);
+      }
+    } else {
+      response = await this.client.beta.messages.create(params);
+    }
 
     if (response.stop_reason === "refusal") {
       return { text: "Je ne peux pas traiter cette demande. Pouvez-vous la reformuler ?", toolCalls: [] };
