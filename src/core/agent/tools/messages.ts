@@ -24,6 +24,14 @@ async function nextAppointment(ctx: AppContext, clientId?: string): Promise<Appo
   );
 }
 
+const SUBJECTS = {
+  delay: "Retard pour notre rendez-vous",
+  reminder: "Rappel de votre rendez-vous",
+  confirmation: "Confirmation de votre rendez-vous",
+  quote_followup: "Votre devis",
+  custom: "Message",
+} as const;
+
 export const draftCustomerMessageTool = defineTool({
   name: "draftCustomerMessage",
   intent: "DRAFT_MESSAGE",
@@ -62,7 +70,7 @@ export const draftCustomerMessageTool = defineTool({
     if (!body) {
       switch (args.purpose) {
         case "delay":
-          body = `Bonjour ${name},\nje vous informe que j'aurai environ ${args.delayMinutes ?? 15} minutes de retard pour notre rendez-vous${when ? ` de ${formatTimeFr(appt!.time)}` : ""}.\nMerci pour votre compréhension.\n${signature}`;
+          body = `Bonjour ${name},\nje vous informe que j'aurai environ ${args.delayMinutes ?? 15} minutes de retard pour notre rendez-vous${when ? ` ${when.replace(/^à /, "de ")}` : ""}.\nMerci pour votre compréhension.\n${signature}`;
           break;
         case "reminder":
           body = `Bonjour ${name},\nje vous rappelle notre rendez-vous ${when || "prévu"}${appt ? ` pour : ${appt.intervention_type.toLowerCase()}` : ""}.\nÀ bientôt,\n${signature}`;
@@ -84,7 +92,7 @@ export const draftCustomerMessageTool = defineTool({
     const canSend = channel === "sms" ? sms.connected : email.connected;
     return {
       ok: true,
-      summary: `Voici un brouillon de ${channel === "sms" ? "SMS" : "email"} pour ${name}. Il n'est pas envoyé : relisez-le puis envoyez-le vous-même.`,
+      summary: `Voici un brouillon ${channel === "sms" ? "de SMS" : "d'email"} pour ${name}. Il n'est pas envoyé : relisez-le puis envoyez-le vous-même.`,
       data: { recipient: name, channel, body },
       blocks: [
         {
@@ -93,7 +101,7 @@ export const draftCustomerMessageTool = defineTool({
           recipient: name,
           phone: client?.phone ?? null,
           email: client?.email ?? null,
-          ...(channel === "email" ? { subject: `${ctx.business.name}` } : {}),
+          ...(channel === "email" ? { subject: `${SUBJECTS[args.purpose]} — ${ctx.business.name}` } : {}),
           body,
           canSend,
         },

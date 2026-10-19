@@ -55,10 +55,10 @@ export async function runAgentTurn(ctx: AppContext, input: { conversationId?: st
   };
 
   // Historique : seuls les textes sont rejoués (les cartes restent côté interface).
-  const messages: ChatMessage[] = previous
-    .slice(-HISTORY_LIMIT)
-    .filter((m) => m.content.trim().length > 0)
-    .map((m) => ({ role: m.role, content: m.content }));
+  // Il doit commencer par un message de l'utilisateur (exigé par les API des modèles).
+  const recent = previous.slice(-HISTORY_LIMIT).filter((m) => m.content.trim().length > 0);
+  const firstUser = recent.findIndex((m) => m.role === "user");
+  const messages: ChatMessage[] = recent.slice(Math.max(firstUser, 0)).map((m) => ({ role: m.role, content: m.content }));
 
   const tc: ToolContext = { ctx, vertical, conversationId: conversation.id };
   const blocks: UIBlock[] = [];
@@ -124,10 +124,13 @@ export async function runAgentTurn(ctx: AppContext, input: { conversationId?: st
         ? "Je n'arrive pas à me connecter au service d'IA : la clé API semble invalide. Vérifiez-la dans la configuration."
         : status === 402 || status === 429
           ? "Le service d'IA est momentanément indisponible (crédit épuisé ou trop de demandes). Réessayez dans un instant."
-          : "Désolé, je n'ai pas réussi à traiter votre demande. Réessayez dans un instant.";
+          : status === 400 || status === 404
+            ? "Le service d'IA a refusé la requête (modèle ou configuration invalide). Vérifiez AI_MODEL et la configuration du serveur."
+            : "Désolé, je n'ai pas réussi à traiter votre demande. Réessayez dans un instant.";
   }
 
-  if (!finalText && !stop) finalText = "C'est fait.";
+  // Pas de « C'est fait » si rien n'a été fait (ex : nombre d'étapes épuisé sans réponse).
+  if (!finalText && !stop) finalText = blocks.length ? "Voici le résultat." : "Je n'ai pas réussi à aller au bout de cette demande. Pouvez-vous la reformuler ?";
   const assistant = await appendMessage(ctx, conversation.id, "assistant", finalText, blocks);
   return { conversationId: conversation.id, messages: [toUIMessage(userMessage), toUIMessage(assistant)] };
 }

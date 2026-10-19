@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { addDays, formatDayFr, formatDurationFr, formatTimeFr, relativeDayFr, today } from "@/lib/dates";
+import { addDays, formatDayFr, formatDurationFr, formatTimeFr, localTime, relativeDayFr, today } from "@/lib/dates";
 import { clientAddressLine, clientDisplayName } from "@/lib/format";
 import {
   checkAvailability,
@@ -63,7 +63,15 @@ export const getAppointmentsTool = defineTool({
       summary: describeList(items, label),
       headline: headline(items, label),
       data: items.map((a) => ({ id: a.id, time: a.time, end: a.end_time, client: a.client_name, type: a.intervention_type, city: a.city, status: a.status })),
-      blocks: [{ type: "appointments", title: `${rel.charAt(0).toUpperCase()}${rel.slice(1)} — ${formatDayFr(date)}`, date, items: items.map(toAppointmentCard) }],
+      blocks: [
+        {
+          type: "appointments",
+          // « Demain — mardi 20 octobre », mais pas « Jeudi 22 octobre — jeudi 22 octobre ».
+          title: rel === formatDayFr(date) ? `${rel.charAt(0).toUpperCase()}${rel.slice(1)}` : `${rel.charAt(0).toUpperCase()}${rel.slice(1)} — ${formatDayFr(date)}`,
+          date,
+          items: items.map(toAppointmentCard),
+        },
+      ],
     };
   },
 });
@@ -74,26 +82,33 @@ export const getCalendarAvailabilityTool = defineTool({
   level: 1,
   confirmation: "never",
   audit: false,
-  description: "Trouver les créneaux libres d'une journée pour une intervention d'une durée donnée.",
+  description:
+    "Trouver les créneaux libres d'une journée pour une intervention d'une durée donnée. `after` / `before` limitent à une partie de la journée (ex : après-midi → after 12:00).",
   schema: z.object({
     date: isoDate.describe("Jour AAAA-MM-JJ"),
     durationMinutes: z.number().int().min(15).max(600).optional().describe("Durée en minutes (60 par défaut)"),
+    after: hhmm.optional().describe("Ne garder que les créneaux commençant à partir de HH:MM"),
+    before: hhmm.optional().describe("Ne garder que les créneaux commençant avant HH:MM"),
   }),
   async execute({ ctx }, args) {
     const duration = args.durationMinutes ?? 60;
     const av = await checkAvailability(ctx, args.date, ctx.settings.work_start, duration);
+    // Aujourd'hui : pas de créneau déjà passé.
+    const now = args.date === today(ctx.tz) ? localTime(new Date().toISOString(), ctx.tz) : null;
+    const slots = av.freeSlots.filter((s) => (!now || s > now) && (!args.after || s >= args.after) && (!args.before || s < args.before));
     const day = formatDayFr(args.date);
+    const part = args.after && !args.before ? ` après ${formatTimeFr(args.after)}` : args.before && !args.after ? ` avant ${formatTimeFr(args.before)}` : "";
     const notWorking = av.warnings.find((w) => w.startsWith("Vous ne travaillez"));
     const summary = notWorking
       ? `${notWorking} Voulez-vous quand même prévoir quelque chose le ${day} ?`
-      : av.freeSlots.length === 0
-        ? `Le ${day} est complet pour une intervention de ${formatDurationFr(duration)}.`
-        : `Le ${day}, vous êtes libre à : ${av.freeSlots.slice(0, 8).map(formatTimeFr).join(", ")}${av.freeSlots.length > 8 ? "…" : ""}`;
+      : slots.length === 0
+        ? `Le ${day}, aucun créneau libre${part} pour une intervention de ${formatDurationFr(duration)}.`
+        : `Le ${day}, vous êtes libre${part} à : ${slots.slice(0, 8).map(formatTimeFr).join(", ")}${slots.length > 8 ? "…" : ""}`;
     return {
       ok: true,
       summary,
-      data: { date: args.date, freeSlots: av.freeSlots, appointmentsThatDay: av.dayCount, warnings: av.warnings },
-      blocks: [{ type: "availability", date: args.date, freeSlots: av.freeSlots, warnings: notWorking ? [notWorking] : [] }],
+      data: { date: args.date, freeSlots: slots, appointmentsThatDay: av.dayCount, warnings: av.warnings },
+      blocks: [{ type: "availability", date: args.date, freeSlots: slots, warnings: notWorking ? [notWorking] : [] }],
     };
   },
 });

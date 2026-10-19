@@ -43,6 +43,8 @@ export class AnthropicProvider implements AIProvider {
   readonly label = "Anthropic Claude";
   private readonly client = new Anthropic();
   private readonly model = process.env.AI_MODEL || DEFAULT_MODEL;
+  /** Passe à vrai si le compte refuse le repli serveur : on ne retente plus avec, pour ne pas doubler chaque appel. */
+  private fallbackUnsupported = false;
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
     const params = {
@@ -59,13 +61,14 @@ export class AnthropicProvider implements AIProvider {
       output_config: { effort: "medium" as const },
     };
     let response: Anthropic.Beta.Messages.BetaMessage;
-    if (FALLBACK_MODELS.has(this.model)) {
+    if (FALLBACK_MODELS.has(this.model) && !this.fallbackUnsupported) {
       try {
         response = await this.client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
       } catch (err) {
         // Repli serveur indisponible pour ce compte : on relance la requête sans.
         if (!(err instanceof Anthropic.BadRequestError)) throw err;
         response = await this.client.beta.messages.create(params);
+        this.fallbackUnsupported = true;
       }
     } else {
       response = await this.client.beta.messages.create(params);

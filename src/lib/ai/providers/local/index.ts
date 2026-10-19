@@ -72,11 +72,16 @@ const HELP_TEXT = [
 type Intent = Omit<ToolCall, "id"> | string;
 
 function interventionFrom(text: string, meta: ChatMeta): { label: string; duration: number } | null {
+  // Le mot-clé cité en premier l'emporte : « robinet qui goutte » → Robinetterie, pas Recherche de fuite.
   const t = norm(text);
+  let best: { label: string; duration: number; pos: number } | null = null;
   for (const it of meta.interventionTypes) {
-    if (it.keywords.some((k) => t.includes(norm(k)))) return { label: it.label, duration: it.defaultDurationMinutes };
+    for (const k of it.keywords) {
+      const pos = t.indexOf(norm(k));
+      if (pos >= 0 && (!best || pos < best.pos)) best = { label: it.label, duration: it.defaultDurationMinutes, pos };
+    }
   }
-  return null;
+  return best && { label: best.label, duration: best.duration };
 }
 
 function detectIntent(original: string, meta: ChatMeta): Intent {
@@ -90,7 +95,7 @@ function detectIntent(original: string, meta: ChatMeta): Intent {
   if (/(aide|que sais-tu faire|tu sais faire quoi|comment ca marche)/.test(t)) return HELP_TEXT;
 
   // --- Mémoire : ce que Jarvis sait
-  if (/(que sais[- ]tu de moi|ce que tu sais|qu'est-ce que tu sais|mes regles|mes preferences|mes tarifs|mon tarif|quel est mon taux)/.test(t)) {
+  if (/(que sais[- ]tu de moi|ce que tu sais|qu'est-ce que tu sais|tu sais quoi sur moi|tu te souviens de quoi|de quoi tu te souviens|qu'est-ce que tu retiens|ce que tu as retenu|ta memoire|mes regles|mes preferences|mes tarifs|mon tarif|quel est mon taux)/.test(t)) {
     const query = /tarif|taux/.test(t) ? "tarif" : /regle/.test(t) ? "" : "";
     return { name: "searchMemory", args: query ? { query } : {} };
   }
@@ -184,7 +189,7 @@ function detectIntent(original: string, meta: ChatMeta): Intent {
     return { name: "getClientHistory", args: { client } };
   }
 
-  if (/\b(taches|a faire|todo)\b/.test(t)) {
+  if (/\b(taches|a faire|todo)\b/.test(t) || /\b(je dois|dois-je|j'ai a|il me reste a) faire\b/.test(t)) {
     const scope = /(retard)/.test(t) ? "overdue" : /(aujourd'hui|du jour)/.test(t) ? "today" : "all";
     return { name: "listTasks", args: { scope } };
   }
@@ -192,7 +197,7 @@ function detectIntent(original: string, meta: ChatMeta): Intent {
   // --- Rendez-vous : modifier / annuler
   if (/\b(deplace|decale|reporte|avance|change|modifie|annule|annuler|deplacer|decaler|reporter)\b/.test(t) && (client || /rendez|rdv|intervention/.test(t))) {
     const isCancel = /\bannul/.test(t);
-    const parts = original.split(/\b(?:à|a|au|vers|pour)\b(?=\s+(?:demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|\d))/i);
+    const parts = original.split(/(?<=^|\s)(?:à|a|au|vers|pour)(?=\s+(?:demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|\d))/i);
     const target = parts.length > 1 ? parts.slice(1).join(" ") : original;
     const newDate = isCancel ? null : parseDate(target, today);
     const newTime = isCancel ? null : parseTime(target);
@@ -223,7 +228,9 @@ function detectIntent(original: string, meta: ChatMeta): Intent {
 
   // --- Disponibilités
   if (/(dispo|libre|creneau|trou)/.test(t)) {
-    return { name: "getCalendarAvailability", args: { date: date ?? today } };
+    const afternoon = /(apres-midi|apres midi|aprem|cet aprem|l'aprem)/.test(t);
+    const morning = !afternoon && /\b(matin|matinee)\b/.test(t);
+    return { name: "getCalendarAvailability", args: { date: date ?? today, ...(afternoon ? { after: "12:00" } : morning ? { before: "12:00" } : {}) } };
   }
 
   // --- Planning
@@ -240,7 +247,11 @@ function detectIntent(original: string, meta: ChatMeta): Intent {
     const civility = nameMatch[1] ? (/^m(\.|onsieur)/i.test(nameMatch[1]) ? "M." : "Mme") : undefined;
     const firstName = nameMatch[3] ? nameMatch[2] : undefined;
     const lastName = nameMatch[3] ?? nameMatch[2]!;
-    const city = original.match(/\b(?:à|a)\s+([A-ZÀ-Ý][\wÀ-ÿ'-]+(?:[- ][A-ZÀ-Ý][\wÀ-ÿ'-]+)*)/)?.[1];
+    const city = original.match(/(?:^|\s)(?:à|a)\s+([A-ZÀ-Ý][\wÀ-ÿ'-]+(?:[- ][A-ZÀ-Ý][\wÀ-ÿ'-]+)*)/)?.[1];
+    const address = original
+      .match(/\b\d{1,4}(?:\s?(?:bis|ter))?,?\s+(?:rue|avenue|av\.|boulevard|bd|chemin|allée|allee|place|impasse|route|cours|quai|lotissement|résidence|residence)\b[^,;\n]*/i)?.[0]
+      .replace(/\s+(?:à|a)\s+[A-ZÀ-Ý].*$/, "")
+      .trim();
     return {
       name: "createClient",
       args: {
@@ -249,6 +260,7 @@ function detectIntent(original: string, meta: ChatMeta): Intent {
         ...(civility ? { civility } : {}),
         ...(extractPhone(original) ? { phone: extractPhone(original) } : {}),
         ...(extractEmail(original) ? { email: extractEmail(original) } : {}),
+        ...(address ? { address } : {}),
         ...(city ? { city } : {}),
       },
     };
