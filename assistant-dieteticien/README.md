@@ -11,12 +11,13 @@ premier rendez-vous (kinés, psychologues, orthophonistes, etc.).
 
 ## Statut
 
-Phase de réflexion : aucun code pour l'instant.
+Cahier des charges du MVP rédigé, en attente de relecture par des diététiciens. Aucun code pour l'instant.
 
 ## Documents
 
 - [01 - Analyse de l'idée et du marché](docs/01-analyse-idee.md)
 - [02 - Prix de l'abonnement et coûts réels](docs/02-tarifs-et-couts.md)
+- [03 - Cahier des charges du MVP](docs/03-cahier-des-charges-mvp.md)
 - [Fiche de renseignements modèle (diététique)](docs/fiche-renseignement-modele.docx)
 
 ## Contexte du porteur de projet
